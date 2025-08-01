@@ -1,6 +1,7 @@
+require('dotenv').config(); // ✅ Load .env
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs'); // ← You also need this for comparing password
+const bcrypt = require('bcryptjs');
 
 // Signup
 exports.signup = async(req, res) => {
@@ -11,12 +12,13 @@ exports.signup = async(req, res) => {
 
     try {
         const existing = await User.findOne({ email });
-        if (existing) return res.status(409).json({ message: 'User already exists.' });
+        if (existing)
+            return res.status(409).json({ message: 'User already exists.' });
 
         const newUser = new User({ username, email, password });
         await newUser.save();
 
-        const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ id: newUser._id }, process.env.SECRET, { expiresIn: '7d' }); // 👈 Match .env
 
         res.status(201).json({
             token,
@@ -30,7 +32,7 @@ exports.signup = async(req, res) => {
     }
 };
 
-// ✅ Login
+// Login
 exports.login = async(req, res) => {
     const { email, password } = req.body;
 
@@ -44,7 +46,7 @@ exports.login = async(req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(401).json({ message: 'Invalid credentials.' });
 
-        const token = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ id: user._id, email: user.email }, process.env.SECRET, { expiresIn: '7d' }); // 👈 Match .env
 
         res.status(200).json({
             token,
