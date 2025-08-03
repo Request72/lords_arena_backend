@@ -8,23 +8,33 @@ require('dotenv').config();
 const authRoutes = require('./routes/authRoutes');
 const characterRoutes = require('./routes/characterRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
-const leaderboardRoutes = require('./routes/leaderboardRoutes'); // NEW
+const leaderboardRoutes = require('./routes/leaderboardRoutes');
+const gameRoutes = require('./routes/gameRoutes');
+const scoreRoutes = require('./routes/scoreRoutes');
+const playerRoutes = require('./routes/playerRoutes');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 const path = require('path');
-app.use(express.static(path.join(__dirname, 'client/build')));
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'client/build/index.html'));
-});
+
+// ✅ Middleware
 app.use(cors());
 app.use(express.json());
 
+// ✅ API Routes (must come before static files)
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/characters', characterRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/game', gameRoutes);
+app.use('/api/player', playerRoutes);
+
+// ✅ Static files (after API routes) - TEMPORARILY COMMENTED OUT
+// app.use(express.static(path.join(__dirname, 'client/build')));
+// app.get('*', (req, res) => {
+//     res.sendFile(path.join(__dirname, 'client/build/index.html'));
+// });
 
 // MongoDB model for storing scores
 const Score = require('./models/Score');
@@ -74,7 +84,10 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        if (waitingPlayer?.id === socket.id) waitingPlayer = null;
+        if (waitingPlayer && waitingPlayer.id === socket.id) {
+            waitingPlayer = null;
+        }
+
         if (socket.roomId) {
             socket.to(socket.roomId).emit('player-disconnected', socket.id);
         }
@@ -82,7 +95,7 @@ io.on('connection', (socket) => {
         console.log('🔴 Player disconnected:', socket.id);
     });
 
-    socket.on('game-over', async ({ username, score }) => {
+    socket.on('game-over', async({ username, score }) => {
         try {
             const newScore = new Score({ username, score });
             await newScore.save();
@@ -93,11 +106,24 @@ io.on('connection', (socket) => {
     });
 });
 
-mongoose.connect(process.env.MONGO_URI)
+// MongoDB Connection
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/lords_arena')
     .then(() => {
+        console.log('✅ Connected to MongoDB');
+
         const PORT = process.env.PORT || 5000;
         server.listen(PORT, '0.0.0.0', () => {
             console.log(`✅ Server running on port ${PORT}`);
+            console.log(`🌐 Accessible at: http://192.168.1.72:${PORT}`);
         });
     })
-    .catch(err => console.error('❌ MongoDB connection error:', err));
+    .catch((err) => {
+        console.error('❌ MongoDB connection error:', err);
+        console.log('⚠️ Starting server without MongoDB...');
+
+        const PORT = process.env.PORT || 5000;
+        server.listen(PORT, '0.0.0.0', () => {
+            console.log(`✅ Server running on port ${PORT}`);
+            console.log(`🌐 Accessible at: http://192.168.1.72:${PORT}`);
+        });
+    });
