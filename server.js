@@ -3,32 +3,39 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
+const os = require('os');
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
 const characterRoutes = require('./routes/characterRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
-const leaderboardRoutes = require('./routes/leaderboardRoutes'); // NEW
+const leaderboardRoutes = require('./routes/leaderboardRoutes');
+const gameRoutes = require('./routes/gameRoutes');
+const scoreRoutes = require('./routes/scoreRoutes');
+const playerRoutes = require('./routes/playerRoutes');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
+
 const path = require('path');
-app.use(express.static(path.join(__dirname, 'client/build')));
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'client/build/index.html'));
-});
+
+// ✅ Middleware
 app.use(cors());
 app.use(express.json());
 
+// ✅ API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/characters', characterRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/game', gameRoutes);
+app.use('/api/player', playerRoutes);
 
-// MongoDB model for storing scores
+// ✅ Score Model
 const Score = require('./models/Score');
 
+// ✅ Socket.IO logic
 const playerData = {};
 let waitingPlayer = null;
 
@@ -73,15 +80,6 @@ io.on('connection', (socket) => {
         socket.to(roomId).emit('player-moved', { id: socket.id, x, y });
     });
 
-    socket.on('disconnect', () => {
-        if (waitingPlayer?.id === socket.id) waitingPlayer = null;
-        if (socket.roomId) {
-            socket.to(socket.roomId).emit('player-disconnected', socket.id);
-        }
-        delete playerData[socket.id];
-        console.log('🔴 Player disconnected:', socket.id);
-    });
-
     socket.on('game-over', async ({ username, score }) => {
         try {
             const newScore = new Score({ username, score });
@@ -91,13 +89,61 @@ io.on('connection', (socket) => {
             console.error('❌ Error saving score:', err);
         }
     });
+
+    socket.on('disconnect', () => {
+        if (waitingPlayer && waitingPlayer.id === socket.id) {
+            waitingPlayer = null;
+        }
+
+        if (socket.roomId) {
+            socket.to(socket.roomId).emit('player-disconnected', socket.id);
+        }
+        delete playerData[socket.id];
+        console.log('🔴 Player disconnected:', socket.id);
+    });
 });
 
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => {
-        const PORT = process.env.PORT || 5000;
-        server.listen(PORT, '0.0.0.0', () => {
-            console.log(`✅ Server running on port ${PORT}`);
+// ✅ IP Utility
+function getLocalIp() {
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+        for (const net of nets[name]) {
+            if (net.family === 'IPv4' && !net.internal) {
+                return net.address;
+            }
+        }
+    }
+    return 'localhost';
+}
+
+// ✅ Dynamic Port Startup
+function tryListen(port) {
+    server.listen(port, '0.0.0.0')
+        .on('listening', () => {
+            const ip = getLocalIp();
+            console.log(`✅ Server running on port ${port}`);
+            console.log(`🌐 Accessible at: http://${ip}:${port}`);
+        })
+        .on('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+                console.warn(`⚠️ Port ${port} in use. Trying ${port + 1}...`);
+                tryListen(port + 1);
+            } else {
+                console.error('❌ Server error:', err);
+            }
         });
+}
+
+// ✅ MongoDB Connection
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/lords_arena')
+    .then(() => {
+        console.log('✅ Connected to MongoDB');
+        const startPort = process.env.PORT ? parseInt(process.env.PORT) : 5000;
+        tryListen(startPort);
     })
-    .catch(err => console.error('❌ MongoDB connection error:', err));
+    .catch((err) => {
+        console.error('❌ MongoDB connection error:', err);
+        console.log('⚠️ Starting server without MongoDB...');
+        const startPort = process.env.PORT ? parseInt(process.env.PORT) : 5000;
+        tryListen(startPort);
+    });

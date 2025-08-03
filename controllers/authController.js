@@ -1,4 +1,4 @@
-require('dotenv').config(); // ✅ Load .env
+require('dotenv').config();
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -18,7 +18,7 @@ exports.signup = async(req, res) => {
         const newUser = new User({ username, email, password });
         await newUser.save();
 
-        const token = jwt.sign({ id: newUser._id }, process.env.SECRET, { expiresIn: '7d' }); // 👈 Match .env
+        const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
         res.status(201).json({
             token,
@@ -46,7 +46,7 @@ exports.login = async(req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(401).json({ message: 'Invalid credentials.' });
 
-        const token = jwt.sign({ id: user._id, email: user.email }, process.env.SECRET, { expiresIn: '7d' }); // 👈 Match .env
+        const token = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
         res.status(200).json({
             token,
