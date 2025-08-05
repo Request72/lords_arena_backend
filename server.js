@@ -30,6 +30,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/characters', characterRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/game', gameRoutes);
+app.use('/api/game', scoreRoutes);
 app.use('/api/player', playerRoutes);
 
 // ✅ Score Model
@@ -80,7 +81,7 @@ io.on('connection', (socket) => {
         socket.to(roomId).emit('player-moved', { id: socket.id, x, y });
     });
 
-    socket.on('game-over', async ({ username, score }) => {
+    socket.on('game-over', async({ username, score }) => {
         try {
             const newScore = new Score({ username, score });
             await newScore.save();
